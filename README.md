@@ -1,4 +1,3 @@
-# Survival-Analysis-with-Stroke-Dataset-
 # R Survival Analysis of Stroke Data
 
 This repository contains R code for performing survival analysis on a stroke dataset. The analysis aims to understand factors influencing the time to death in stroke patients using Kaplan-Meier estimation and Cox Proportional Hazards models.
@@ -19,7 +18,7 @@ This repository contains R code for performing survival analysis on a stroke dat
 - [Requirements](#requirements)
 - [Usage](#usage)
 - [Author](#author)
-- [License](#license)
+
 
 ## Introduction
 
@@ -126,6 +125,4 @@ The output will include statistical summaries, Kaplan-Meier plots, Cox model sum
 
 Careen Evans-Joseph
 
-## License
 
-[Specify your license here, e.g., MIT, GPL, etc.]
