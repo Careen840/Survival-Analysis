@@ -1,0 +1,243 @@
+---
+title: "R Survival Analysis of Stroke Data"
+author: "Careen Evans-Joseph"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+---
+
+Stroke Dataset
+```{r setup, include=FALSE}
+
+#Install packages
+install.packages("tidyverse", repos = "https://cran.rstudio.com/")
+
+
+install.packages("gtsummary")
+install.packages("lubridate")
+install.packages("survival")
+install.packages("survminer")
+install.packages("broom")
+install.packages("here")
+install.packages("ggplot2")
+
+library(tidyverse)
+library(here)
+library(gtsummary)
+library(lubridate)
+library(survival)
+library(survminer)
+library(broom)
+library(ggplot2)
+
+#Get working directory and read the stroke dataset
+getwd()
+stroke <- read.csv("/Users/careenevansjoseph/Downloads/Stroke Analysis/stroke_data.csv")
+stroke
+head(stroke)
+
+#Data Cleaning, converting date columns into date format used by R
+stroke  %>>%
+  mutate (doa = dmy(doa),
+        dob = dmy(dod))
+
+#Summary of the dataset
+str(stroke)
+summary(stroke)
+
+stroke %>%
+  tbl_summary(by = status) %>%
+  as_gt()
+
+
+#Survival Probability for all patients - Kaplan-Meier Estimate 
+KM<- survfit(Surv(time = time2, event = status == "dead") ~ 1, data= stroke)
+KM
+summary(KM)
+
+#Survival Probability for stroke patients 
+
+KM_stroke<- survfit(Surv(time = time2, event =status == "dead") ~ stroke_type, data= stroke)
+KM_stroke
+
+summary(KM_stroke)
+
+
+#Plotting the survival probability 
+
+ggsurvplot(KM_stroke, data = stroke, 
+           xlab = "Time in days", 
+           ylab = "Survival Probability",
+           title = "Kaplan-Meier Survival Curve for Stroke Patients",
+           risk.table = TRUE,
+           pval = TRUE,
+           conf.int = TRUE,
+           linetype = c(1,4),
+           tables.height = 0.2, 
+           legend.title = "Stroke Type",
+           legend.labs = c("Ischemic Stroke", "Hermorrhagic"))
+            
+
+#Kaplan-Meier for Dibates Mellitus patients
+
+KM_diabetes <- survfit(Surv(time = time2, event = status == "dead") ~ dm, data = stroke)
+KM_diabetes
+
+summary(KM_diabtes)
+
+#Plotting the survival probability for Diabetes Mellitus 
+
+ggsurvplot(KM_diabetes, data = stroke, 
+           xlab = "Time in days", 
+           ylab = "Survival Probability",
+           title = "Kaplan-Meier Survival Curve for Diabetes Mellitus Patients",
+           risk.table = TRUE,
+           pval = TRUE,
+           conf.int = TRUE,
+           linetype = c(1,4),
+           tables.height = 0.2, 
+           legend.title = "Diabetes Mellitus",
+           legend.labs = c("No", "Yes"))
+
+
+#Comparing KM estimates across groups using log-rank test
+log_rank_test<- survdiff(Surv(time = time2, event = status == "dead") ~ stroke_type, data = stroke, rho = 0)
+log_rank_test
+
+#P-value among stroke types patients is 0.03 which is less than 0.05 and significant, therefore we reject the null hypothesis that there is no difference in survival between the groups.
+# There is in fact a significant difference in survival between the stroke types groups. 
+
+
+log_rank_test_diabetes <- survdiff(Surv(time = time2, event = status == "dead") ~ stroke_type, data = stroke, rho = 0)
+log_rank_test_diabetes
+#P-value among stroke types patients is 0.1 which is greater than 0.05 and significant, therefore we fail to reject the null hypothesis that there is no difference in survival between the groups.
+# There is in fact no significant difference in survival between the diabets types groups. 
+
+# You can aslo perform another test such Peto- peto test to compare the results
+
+Peto_test<- survdiff(Surv(time = time2, event = status == "dead") ~ stroke_type, data = stroke, rho = 1)
+Peto_test 
+
+
+Peto_test_diabetes<- survdiff(Surv(time = time2, event = status == "dead") ~ dm, data = stroke, rho =1)
+Peto_test_diabetes
+
+#Cox Regression Model 
+cox_model<- coxph(Surv(time = time2 , event = status == "dead") ~stroke_type, data = stroke)
+summary(cox_model)
+
+tidy(cox_model, conf.int = TRUE) 
+#-0.0662: This is the coefficient from the model. 
+#The negative sign means that the hazard of death is lower for patients with IS compared to HS. 
+#To get the actual hazard ratio, you'd exponentiate this value
+
+tidy(cox_model, exponentiate = TRUE, conf.int = TRUE)
+
+cox_model_gcs <- coxph(Surv(time = time2, event = status == "dead") ~ gcs, data = stroke)
+summary(cox_model_gcs)
+
+#a higher GCS score generally indicates better neurological function. 
+#So, it makes sense that as a patient's GCS score improves (increases), their risk of dying decreases. 
+#The value of −0.175 tells us the strength of that relationship in the model.
+
+tidy(cox_model_gcs, exponentiate = TRUE, conf.int = TRUE)
+
+#Let's add more varibales to the model
+#stroke_type, diabetes, referral_from and GCS score
+cox_model_full <- coxph(Surv(time = time2, event = status == "dead") ~ stroke_type + gcs + referral_from, data = stroke)
+cox_model_full
+
+tidy(cox_model_full, exponentiate = TRUE, confint = TRUE)
+
+# The tidy function provides a summary of the model coefficients, including hazard ratios and confidence intervals.
+
+#Exponentiate the log hazard ratios to get hazard ratios
+tbl_regression(cox_model_full) %>% as_gt()
+
+cox_model_full2 <- coxph(Surv(time = time2, event = status == "dead") ~ stroke_type + referral_from, data = stroke)
+cox_model_full2
+
+
+# The anova function compares the two Cox models to see if the addition of the referral_from variable significantly improves the model fit.
+# The output will show the likelihood ratio test statistic and p-value, which can be used to determine if the new model is significantly better than the old one.
+anova(cox_model_full, cox_model_full2)
+tidy(cox_model_full2, exponentiate = TRUE, conf.int = TRUE)
+
+#Visualizing the Cox model
+ggforest(cox_model_full, data = stroke,
+         main = "Cox Proportional Hazards Model for Stroke Patients",)
+
+
+#Test for PH assumption
+stroke_zph<- cox.zph(cox_model_full, transform = "km", global = TRUE)
+stroke_zph
+
+stroke_zph_rank <- cox.zph(cox_model_full, transform = "rank", global = TRUE)
+stroke_zph_rank
+
+#Plot the Schoenfeld residuals
+ggcoxdiagnostics(cox_model_full, type = "deviance")
+ggcoxdiagnostics(cox_model_full, type = "schoenfeld", ox.scale = "observation.id")
+
+#Plot the Schoenfeld residuals for Stroke Type
+plot(stroke_zph, var = "stroke_type") 
+
+#Plot the Schoenfeld residuals for GCS
+plot(stroke_zph, var ="gcs")
+
+#plot the Schoenfeld residuals for referral_form
+plot(stroke_zph, var = "referral_from")
+
+#Model Prediction 
+# Using the augment function to add predictions and residuals to the dataset
+
+stroke_lp<- augment(cox_model_full, data = stroke)
+stroke_lp %>%
+  dplyr:: select(gcs, stroke_type, referral_from, .fitted:.resid) %>%
+  slice(1:10)
+
+names(stroke_lp)
+
+# Calculate risk scores for each patient
+risks <-augment(cox_model_full, data = stroke, type.predict = "risk")
+risks %>%
+  dplyr::select(status, gcs, stroke_type, referral_from, .fitted:.resid) %>%
+  slice(1:10)
+
+
+#The expected number of events is the number of deaths that would be expected based on the model's predictions.
+# The observed number of events is the actual number of deaths in the dataset.
+expected <- augment(cox_model_full, 
+                    data = stroke, 
+                    type.predict = "expected")
+
+
+expected %>% 
+    dplyr::select(status, gcs, stroke_type, 
+                referral_from, .fitted:.resid) %>% 
+  mutate(surv_prob = exp(-(.fitted))) %>% 
+  slice(1:10)
+
+#Look at the residuals from Cox PH model 
+rmartingale <- residuals(cox_model_full, 'martingale')
+rmartingale
+
+rdeviance <- residuals(cox_model_full, 'deviance')
+rschoenfeld <- residuals(cox_model_full, 'schoenfeld')
+rdfbeta <- residuals(cox_model_full, 'dfbeta')
+rscaled_sch <- residuals(cox_model_full, 'scaledsch')
+
+#Check the influence of dropping each observation on the model coefficients
+ggcoxdiagnostics(cox_model_full,,
+                 type = "dfbetas",
+                 point.size = 0,
+                 hline.col = "black",
+                 sline.col = "black") + geom_bar(stat = "identity")
+
+
+#Plot the adjusted survival curves for the Cox model
+adjsurvive<- ggadjustedcurves(cox_model_full, data = stroke)
+adjsurvive
